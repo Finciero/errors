@@ -145,3 +145,7 @@ func (e *Error) MarshalJSON() (b []byte, err error) {
 
 	return json.Marshal(s)
 }
+
+var (
+	NotFound = &Error{statusCode: 404, errorID: "not found"}
+)
