@@ -21,6 +21,10 @@ func (e *Error) Error() string {
 	)
 }
 
+var (
+	NotFound = &Error{statusCode: 404, errorID: "not found"}
+)
+
 func (e *Error) build(setters ...errorParamsSetter) {
 	for _, setter := range setters {
 		setter(&e.params)
@@ -145,7 +149,3 @@ func (e *Error) MarshalJSON() (b []byte, err error) {
 
 	return json.Marshal(s)
 }
-
-var (
-	NotFound = &Error{statusCode: 404, errorID: "not found"}
-)
