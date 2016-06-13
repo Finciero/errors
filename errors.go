@@ -3,32 +3,82 @@ package errors
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
+)
+
+const (
+	StatusContinue           = 100
+	StatusSwitchingProtocols = 101
+
+	StatusOK                   = 200
+	StatusCreated              = 201
+	StatusAccepted             = 202
+	StatusNonAuthoritativeInfo = 203
+	StatusNoContent            = 204
+	StatusResetContent         = 205
+	StatusPartialContent       = 206
+
+	StatusMultipleChoices   = 300
+	StatusMovedPermanently  = 301
+	StatusFound             = 302
+	StatusSeeOther          = 303
+	StatusNotModified       = 304
+	StatusUseProxy          = 305
+	StatusTemporaryRedirect = 307
+
+	StatusBadRequest                   = 400
+	StatusUnauthorized                 = 401
+	StatusPaymentRequired              = 402
+	StatusForbidden                    = 403
+	StatusNotFound                     = 404
+	StatusMethodNotAllowed             = 405
+	StatusNotAcceptable                = 406
+	StatusProxyAuthRequired            = 407
+	StatusRequestTimeout               = 408
+	StatusConflict                     = 409
+	StatusGone                         = 410
+	StatusLengthRequired               = 411
+	StatusPreconditionFailed           = 412
+	StatusRequestEntityTooLarge        = 413
+	StatusRequestURITooLong            = 414
+	StatusUnsupportedMediaType         = 415
+	StatusRequestedRangeNotSatisfiable = 416
+	StatusExpectationFailed            = 417
+	StatusTeapot                       = 418
+	StatusUnprocessableEntity          = 422
+	StatusPreconditionRequired         = 428
+	StatusTooManyRequests              = 429
+	StatusRequestHeaderFieldsTooLarge  = 431
+	StatusUnavailableForLegalReasons   = 451
+
+	StatusInternalServerError           = 500
+	StatusNotImplemented                = 501
+	StatusBadGateway                    = 502
+	StatusServiceUnavailable            = 503
+	StatusGatewayTimeout                = 504
+	StatusHTTPVersionNotSupported       = 505
+	StatusNetworkAuthenticationRequired = 511
+)
+
+const (
+	MsgBadRequest          = "bad request"
+	MsgInvalidParams       = "invalid parameters"
+	MsgMissingParams       = "missing parameters"
+	MsgIntervalServerError = "internal server error"
+	MsgNotFound            = "not found"
+)
+
+var (
+	ErrNotFound            = NotFound()
+	ErrMissingParams       = MissingParams()
+	ErrInvalidParams       = InvalidParams()
+	ErrBadRequest          = BadRequest()
+	ErrIntervalServerError = InternalServerError()
 )
 
 type Error struct {
-	statusCode int
-	errorID    string
+	StatusCode int
+	ErrorID    string
 	params     errorParams
-}
-
-func (e *Error) Error() string {
-	return fmt.Sprintf(
-		"apierror: status_code: %d error_id: %s params: %+v\n",
-		e.statusCode,
-		e.errorID,
-		e.params,
-	)
-}
-
-var (
-	NotFound = &Error{statusCode: 404, errorID: "not found"}
-)
-
-func (e *Error) build(setters ...errorParamsSetter) {
-	for _, setter := range setters {
-		setter(&e.params)
-	}
 }
 
 type Meta map[string]interface{}
@@ -36,6 +86,35 @@ type Meta map[string]interface{}
 type errorParams struct {
 	Meta        Meta
 	Description string
+}
+
+func (params errorParams) String() string {
+	var desc string
+	if params.Description != "" {
+		desc += fmt.Sprintf("description=%q", params.Description)
+	}
+	for key, value := range params.Meta {
+		desc += fmt.Sprintf(" %s=%s", key, value)
+	}
+	return desc
+}
+
+func New(sc int, id string, setters ...errorParamsSetter) *Error {
+	var p errorParams
+	for _, s := range setters {
+		s(&p)
+	}
+	return &Error{StatusCode: sc, ErrorID: id, params: p}
+}
+
+func (e *Error) Error() string {
+	params := e.params.String()
+
+	if len(params) > 0 {
+		return fmt.Sprintf("status_code=%d error_id=%q %s", e.StatusCode, e.ErrorID, params)
+	}
+
+	return fmt.Sprintf("status_code=%d error_id=%q", e.StatusCode, e.ErrorID)
 }
 
 type errorParamsSetter func(*errorParams)
@@ -52,100 +131,39 @@ func SetDescription(d string) errorParamsSetter {
 	}
 }
 
-func NewBadRequest(setters ...errorParamsSetter) *Error {
-	err := &Error{statusCode: 400, errorID: "bad_request"}
-
-	err.build(setters...)
-	return err
+func BadRequest(setters ...errorParamsSetter) *Error {
+	return New(StatusBadRequest, MsgBadRequest, setters...)
 }
 
-func NewInvalidParams(setters ...errorParamsSetter) *Error {
-	err := &Error{statusCode: 422, errorID: "invalid_params"}
-
-	err.build(setters...)
-	return err
+func InvalidParams(setters ...errorParamsSetter) *Error {
+	return New(StatusUnprocessableEntity, MsgInvalidParams, setters...)
 }
 
-func NewMissingParams(setters ...errorParamsSetter) *Error {
-	err := &Error{statusCode: 422, errorID: "missing_params"}
-
-	err.build(setters...)
-	return err
+func MissingParams(setters ...errorParamsSetter) *Error {
+	return New(StatusUnprocessableEntity, MsgMissingParams, setters...)
 }
 
-func NewInternalServer(setters ...errorParamsSetter) *Error {
-	err := &Error{statusCode: 500, errorID: "missing_params"}
-
-	err.build(setters...)
-	return err
+func InternalServerError(setters ...errorParamsSetter) *Error {
+	return New(StatusInternalServerError, MsgIntervalServerError, setters...)
 }
 
-func compareMeta(m1, m2 Meta) bool {
-	if m1 == nil && m2 == nil {
-		return true
-	}
-
-	if (m1 == nil && m2 != nil) || (m1 != nil && m2 == nil) {
-		return false
-	}
-
-	if len(m1) != len(m2) {
-		return false
-	}
-
-	for k1, v1 := range m1 {
-		if v2, ok := m2[k1]; !ok || v1 != v2 {
-			return false
-		}
-	}
-
-	for k1, v1 := range m2 {
-		if v2, ok := m1[k1]; !ok || v1 != v2 {
-			return false
-		}
-	}
-
-	return true
-}
-
-func Compare(e1, e2 *Error) bool {
-	return (e1.statusCode == e2.statusCode &&
-		e1.errorID == e2.errorID &&
-		e1.params.Description == e2.params.Description &&
-		compareMeta(e1.params.Meta, e2.params.Meta))
-}
-
-func notifyError(e Error) {
-	fmt.Println("Send to sentry...", e)
-}
-
-func (e *Error) WriteJSON(w http.ResponseWriter) error {
-	go notifyError(*e)
-
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.WriteHeader(e.statusCode)
-
-	return json.NewEncoder(w).Encode(e)
+func NotFound(setters ...errorParamsSetter) *Error {
+	return New(StatusNotFound, MsgNotFound, setters...)
 }
 
 func (e *Error) MarshalJSON() (b []byte, err error) {
-	var description string
-	var meta Meta
-
-	if e.statusCode != 500 {
-		description = e.params.Description
-		meta = e.params.Meta
+	switch e.StatusCode {
+	case StatusInternalServerError:
+		return json.Marshal(struct {
+			ErrorID    string `json:"error_id"`
+			StatusCode int    `json:"status_code"`
+		}{e.ErrorID, e.StatusCode})
+	default:
+		return json.Marshal(struct {
+			Meta        Meta   `json:"meta,omitempty"`
+			Description string `json:"description,omitempty"`
+			ErrorID     string `json:"error_id"`
+			StatusCode  int    `json:"status_code"`
+		}{e.params.Meta, e.params.Description, e.ErrorID, e.StatusCode})
 	}
-
-	s := struct {
-		Meta        Meta   `json:"meta,omitempty"`
-		Description string `json:"description,omitempty"`
-		ErrorID     string `json:"error_id"`
-	}{
-		Description: description,
-		Meta:        meta,
-		ErrorID:     e.errorID,
-	}
-
-	return json.Marshal(s)
 }
