@@ -6,73 +6,42 @@ import (
 )
 
 const (
-	StatusContinue           = 100
-	StatusSwitchingProtocols = 101
+	StatusBadRequest          = 400
+	StatusUnauthorized        = 401
+	StatusPaymentRequired     = 402
+	StatusForbidden           = 403
+	StatusNotFound            = 404
+	StatusNotAcceptable       = 406
+	StatusUnprocessableEntity = 422
+	StatusTooManyRequests     = 429
 
-	StatusOK                   = 200
-	StatusCreated              = 201
-	StatusAccepted             = 202
-	StatusNonAuthoritativeInfo = 203
-	StatusNoContent            = 204
-	StatusResetContent         = 205
-	StatusPartialContent       = 206
-
-	StatusMultipleChoices   = 300
-	StatusMovedPermanently  = 301
-	StatusFound             = 302
-	StatusSeeOther          = 303
-	StatusNotModified       = 304
-	StatusUseProxy          = 305
-	StatusTemporaryRedirect = 307
-
-	StatusBadRequest                   = 400
-	StatusUnauthorized                 = 401
-	StatusPaymentRequired              = 402
-	StatusForbidden                    = 403
-	StatusNotFound                     = 404
-	StatusMethodNotAllowed             = 405
-	StatusNotAcceptable                = 406
-	StatusProxyAuthRequired            = 407
-	StatusRequestTimeout               = 408
-	StatusConflict                     = 409
-	StatusGone                         = 410
-	StatusLengthRequired               = 411
-	StatusPreconditionFailed           = 412
-	StatusRequestEntityTooLarge        = 413
-	StatusRequestURITooLong            = 414
-	StatusUnsupportedMediaType         = 415
-	StatusRequestedRangeNotSatisfiable = 416
-	StatusExpectationFailed            = 417
-	StatusTeapot                       = 418
-	StatusUnprocessableEntity          = 422
-	StatusPreconditionRequired         = 428
-	StatusTooManyRequests              = 429
-	StatusRequestHeaderFieldsTooLarge  = 431
-	StatusUnavailableForLegalReasons   = 451
-
-	StatusInternalServerError           = 500
-	StatusNotImplemented                = 501
-	StatusBadGateway                    = 502
-	StatusServiceUnavailable            = 503
-	StatusGatewayTimeout                = 504
-	StatusHTTPVersionNotSupported       = 505
-	StatusNetworkAuthenticationRequired = 511
+	StatusInternalServerError = 500
 )
 
 const (
-	MsgBadRequest          = "bad request"
-	MsgInvalidParams       = "invalid parameters"
-	MsgMissingParams       = "missing parameters"
-	MsgIntervalServerError = "internal server error"
-	MsgNotFound            = "not found"
+	IDBadRequest     = "bad_request"
+	IDUnauthorized   = "unauthorized"
+	IDDelinquent     = "delinquent"
+	IDForbidden      = "forbidden"
+	IDSuspended      = "suspended"
+	IDNotFound       = "not_found"
+	IDNotAcceptable  = "not_acceptable"
+	IDInvalidParams  = "invalid_params"
+	IDRateLimit      = "rate_limit"
+	IDInternalServer = "internal_server"
 )
 
 var (
-	ErrNotFound            = NotFound()
-	ErrMissingParams       = MissingParams()
-	ErrInvalidParams       = InvalidParams()
-	ErrBadRequest          = BadRequest()
-	ErrIntervalServerError = InternalServerError()
+	ErrBadRequest     = BadRequest()
+	ErrUnauthorized   = Unauthorized()
+	ErrDelinquent     = Delinquent()
+	ErrForbidden      = Forbidden()
+	ErrSuspended      = Suspended()
+	ErrNotFound       = NotFound()
+	ErrNotAcceptable  = NotAcceptable()
+	ErrInvalidParams  = InvalidParams()
+	ErrRateLimit      = RateLimit()
+	ErrInternalServer = InternalServer()
 )
 
 type Error struct {
@@ -132,23 +101,43 @@ func SetDescription(d string) errorParamsSetter {
 }
 
 func BadRequest(setters ...errorParamsSetter) *Error {
-	return New(StatusBadRequest, MsgBadRequest, setters...)
+	return New(StatusBadRequest, IDBadRequest, setters...)
 }
 
-func InvalidParams(setters ...errorParamsSetter) *Error {
-	return New(StatusUnprocessableEntity, MsgInvalidParams, setters...)
+func Unauthorized(setters ...errorParamsSetter) *Error {
+	return New(StatusUnauthorized, IDUnauthorized, setters...)
 }
 
-func MissingParams(setters ...errorParamsSetter) *Error {
-	return New(StatusUnprocessableEntity, MsgMissingParams, setters...)
+func Delinquent(setters ...errorParamsSetter) *Error {
+	return New(StatusPaymentRequired, IDDelinquent, setters...)
 }
 
-func InternalServerError(setters ...errorParamsSetter) *Error {
-	return New(StatusInternalServerError, MsgIntervalServerError, setters...)
+func Forbidden(setters ...errorParamsSetter) *Error {
+	return New(StatusForbidden, IDForbidden, setters...)
+}
+
+func Suspended(setters ...errorParamsSetter) *Error {
+	return New(StatusForbidden, IDSuspended, setters...)
 }
 
 func NotFound(setters ...errorParamsSetter) *Error {
-	return New(StatusNotFound, MsgNotFound, setters...)
+	return New(StatusNotFound, IDNotFound, setters...)
+}
+
+func NotAcceptable(setters ...errorParamsSetter) *Error {
+	return New(StatusNotAcceptable, IDNotAcceptable, setters...)
+}
+
+func InvalidParams(setters ...errorParamsSetter) *Error {
+	return New(StatusUnprocessableEntity, IDInvalidParams, setters...)
+}
+
+func RateLimit(setters ...errorParamsSetter) *Error {
+	return New(StatusTooManyRequests, IDRateLimit, setters...)
+}
+
+func InternalServer(setters ...errorParamsSetter) *Error {
+	return New(StatusInternalServerError, IDInternalServer, setters...)
 }
 
 func (e *Error) MarshalJSON() (b []byte, err error) {
