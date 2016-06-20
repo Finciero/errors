@@ -1,34 +1,40 @@
+// go:generate stringer -type=Code
 package errors
 
 import (
 	"encoding/json"
 	"fmt"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+)
+
+type Code int32
+
+const (
+	bad_request    Code = 400
+	unauthorized   Code = 401
+	delinquent     Code = 402
+	forbidden      Code = 403
+	not_found      Code = 404
+	not_acceptable Code = 406
+	invalid_params Code = 422
+	rate_limit     Code = 429
+
+	internal_server Code = 500
 )
 
 const (
-	StatusBadRequest          = 400
-	StatusUnauthorized        = 401
-	StatusPaymentRequired     = 402
-	StatusForbidden           = 403
-	StatusNotFound            = 404
-	StatusNotAcceptable       = 406
-	StatusUnprocessableEntity = 422
-	StatusTooManyRequests     = 429
+	StatusBadRequest          = bad_request
+	StatusUnauthorized        = unauthorized
+	StatusPaymentRequired     = delinquent
+	StatusForbidden           = forbidden
+	StatusNotFound            = not_found
+	StatusNotAcceptable       = not_acceptable
+	StatusUnprocessableEntity = invalid_params
+	StatusTooManyRequests     = rate_limit
 
-	StatusInternalServerError = 500
-)
-
-const (
-	IDBadRequest     = "bad_request"
-	IDUnauthorized   = "unauthorized"
-	IDDelinquent     = "delinquent"
-	IDForbidden      = "forbidden"
-	IDSuspended      = "suspended"
-	IDNotFound       = "not_found"
-	IDNotAcceptable  = "not_acceptable"
-	IDInvalidParams  = "invalid_params"
-	IDRateLimit      = "rate_limit"
-	IDInternalServer = "internal_server"
+	StatusInternalServerError = internal_server
 )
 
 var (
@@ -45,114 +51,150 @@ var (
 )
 
 type Error struct {
-	StatusCode int
-	ErrorID    string
-	params     errorParams
+	StatusCode  Code
+	Meta        Meta
+	Description string
 }
 
 type Meta map[string]interface{}
 
 type errorParams struct {
-	Meta        Meta
-	Description string
+	meta        Meta
+	description string
 }
 
-func (params errorParams) String() string {
-	var desc string
-	if params.Description != "" {
-		desc += fmt.Sprintf("description=%q", params.Description)
-	}
-	for key, value := range params.Meta {
-		desc += fmt.Sprintf(" %s=%s", key, value)
-	}
-	return desc
-}
-
-func New(sc int, id string, setters ...errorParamsSetter) *Error {
+func New(code Code, setters ...errorParamsSetter) *Error {
 	var p errorParams
 	for _, s := range setters {
 		s(&p)
 	}
-	return &Error{StatusCode: sc, ErrorID: id, params: p}
+	return &Error{StatusCode: code, Meta: p.meta, Description: p.description}
+}
+
+func NewFromError(code Code, err error, setters ...errorParamsSetter) *Error {
+	var p errorParams
+	for _, s := range setters {
+		s(&p)
+	}
+	return &Error{StatusCode: code, Meta: p.meta, Description: err.Error()}
+}
+
+func FromGRPC(err error) *Error {
+	var raw = struct {
+		Meta        Meta   `json:"meta,omitempty"`
+		Description string `json:"msg,omitempty"`
+	}{}
+
+	code := grpc.Code(err)
+	desc := grpc.ErrorDesc(err)
+	if err = json.Unmarshal([]byte(desc), &raw); err != nil {
+		return &Error{
+			StatusCode:  Code(code),
+			Description: desc,
+		}
+	} else {
+		return &Error{
+			StatusCode:  Code(code),
+			Meta:        raw.Meta,
+			Description: raw.Description,
+		}
+	}
 }
 
 func (e *Error) Error() string {
-	params := e.params.String()
+	str := fmt.Sprintf("status_code=%d error_id=%q", e.StatusCode, fmt.Sprint(e.StatusCode))
 
-	if len(params) > 0 {
-		return fmt.Sprintf("status_code=%d error_id=%q %s", e.StatusCode, e.ErrorID, params)
+	if len(e.Description) > 0 {
+		str += fmt.Sprintf(" msg=%q", e.Description)
 	}
 
-	return fmt.Sprintf("status_code=%d error_id=%q", e.StatusCode, e.ErrorID)
+	if len(e.Meta) > 0 {
+		for key, value := range e.Meta {
+			str += fmt.Sprintf(" %s=%s", key, value)
+		}
+	}
+
+	return str
+}
+
+func (e *Error) ErrorID() string {
+	return fmt.Sprint(e.StatusCode)
+}
+
+func (e *Error) ToGRPC() error {
+	buff, _ := json.Marshal(struct {
+		Meta        Meta   `json:"meta,omitempty"`
+		Description string `json:"msg,omitempty"`
+	}{e.Meta, e.Description})
+	return grpc.Errorf(codes.Code(e.StatusCode), string(buff))
 }
 
 type errorParamsSetter func(*errorParams)
 
 func SetMeta(m Meta) errorParamsSetter {
 	return func(e *errorParams) {
-		e.Meta = m
+		if e.meta == nil {
+			e.meta = m
+			return
+		}
+
+		for key, value := range m {
+			e.meta[key] = value
+		}
 	}
 }
 
 func SetDescription(d string) errorParamsSetter {
 	return func(e *errorParams) {
-		e.Description = d
+		e.description = d
 	}
 }
 
 func BadRequest(setters ...errorParamsSetter) *Error {
-	return New(StatusBadRequest, IDBadRequest, setters...)
+	return New(StatusBadRequest, setters...)
 }
 
 func Unauthorized(setters ...errorParamsSetter) *Error {
-	return New(StatusUnauthorized, IDUnauthorized, setters...)
+	return New(StatusUnauthorized, setters...)
 }
 
 func Delinquent(setters ...errorParamsSetter) *Error {
-	return New(StatusPaymentRequired, IDDelinquent, setters...)
+	return New(StatusPaymentRequired, setters...)
 }
 
 func Forbidden(setters ...errorParamsSetter) *Error {
-	return New(StatusForbidden, IDForbidden, setters...)
+	return New(StatusForbidden, setters...)
 }
 
 func Suspended(setters ...errorParamsSetter) *Error {
-	return New(StatusForbidden, IDSuspended, setters...)
+	return New(StatusForbidden, setters...)
 }
 
 func NotFound(setters ...errorParamsSetter) *Error {
-	return New(StatusNotFound, IDNotFound, setters...)
+	return New(StatusNotFound, setters...)
 }
 
 func NotAcceptable(setters ...errorParamsSetter) *Error {
-	return New(StatusNotAcceptable, IDNotAcceptable, setters...)
+	return New(StatusNotAcceptable, setters...)
 }
 
 func InvalidParams(setters ...errorParamsSetter) *Error {
-	return New(StatusUnprocessableEntity, IDInvalidParams, setters...)
+	return New(StatusUnprocessableEntity, setters...)
 }
 
 func RateLimit(setters ...errorParamsSetter) *Error {
-	return New(StatusTooManyRequests, IDRateLimit, setters...)
+	return New(StatusTooManyRequests, setters...)
 }
 
 func InternalServer(setters ...errorParamsSetter) *Error {
-	return New(StatusInternalServerError, IDInternalServer, setters...)
+	return New(StatusInternalServerError, setters...)
 }
 
 func (e *Error) MarshalJSON() (b []byte, err error) {
-	switch e.StatusCode {
-	case StatusInternalServerError:
-		return json.Marshal(struct {
-			ErrorID    string `json:"error_id"`
-			StatusCode int    `json:"status_code"`
-		}{e.ErrorID, e.StatusCode})
-	default:
-		return json.Marshal(struct {
-			Meta        Meta   `json:"meta,omitempty"`
-			Description string `json:"description,omitempty"`
-			ErrorID     string `json:"error_id"`
-			StatusCode  int    `json:"status_code"`
-		}{e.params.Meta, e.params.Description, e.ErrorID, e.StatusCode})
-	}
+	return json.Marshal(struct {
+		Meta       Meta   `json:"meta,omitempty"`
+		Msg        string `json:"msg,omitempty"`
+		ErrorID    string `json:"error_id"`
+		StatusCode Code   `json:"status_code"`
+	}{e.Meta, e.Description, fmt.Sprint(e.StatusCode), e.StatusCode})
 }
