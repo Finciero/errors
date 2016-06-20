@@ -108,10 +108,8 @@ func (e *Error) Error() string {
 		str += fmt.Sprintf(" msg=%q", e.Description)
 	}
 
-	if len(e.Meta) > 0 {
-		for key, value := range e.Meta {
-			str += fmt.Sprintf(" %s=%s", key, value)
-		}
+	for key, value := range e.Meta {
+		str += fmt.Sprintf(" %s=%s", key, value)
 	}
 
 	return str
