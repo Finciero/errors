@@ -28,42 +28,28 @@ func TestNew(t *testing.T) {
 		{
 			code:    1,
 			id:      "Code(1)",
-			setters: []errorParamsSetter{SetDescription("hi")},
-			desc:    "hi",
-			meta:    nil,
-		},
-		{
-			code:    2,
-			id:      "Code(2)",
-			setters: []errorParamsSetter{SetDescription("hi"), SetDescription("ho")},
-			desc:    "ho",
-			meta:    nil,
-		},
-		{
-			code:    3,
-			id:      "Code(3)",
 			setters: nil,
-			desc:    "",
+			desc:    "hi",
 			meta:    nil,
 		},
 		{
 			code:    4,
 			id:      "Code(4)",
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetDescription("let's go")},
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"})},
 			desc:    "let's go",
 			meta:    Meta{"hi": "ho"},
 		},
 		{
 			code:    5,
 			id:      "Code(5)",
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetDescription("let's go"), SetMeta(Meta{"ho": "hi"})},
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetMeta(Meta{"ho": "hi"})},
 			desc:    "let's go",
 			meta:    Meta{"ho": "hi", "hi": "ho"},
 		},
 	}
 
 	for _, tt := range tests {
-		got := New(tt.code, tt.setters...)
+		got := New(tt.code, tt.desc, tt.setters...)
 		if got.StatusCode != tt.code {
 			t.Errorf("New(%d, %v) = %v, unexpected status\n exp: %d\n got: %d\n", tt.code, tt.setters, got, tt.code, got.StatusCode)
 		}
@@ -80,76 +66,47 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewFromError(t *testing.T) {
-	var errTest = errors.New("test: new error")
+	var (
+		errMsg  = "test: new error"
+		errTest = errors.New(errMsg)
+	)
 
 	tests := []struct {
 		code    Code
 		id      string
-		err     error
 		setters []errorParamsSetter
-		desc    string
 		meta    Meta
 	}{
 		{
-			code:    0,
-			id:      "Code(0)",
-			err:     errTest,
-			setters: nil,
-			desc:    "",
-			meta:    nil,
-		},
-		{
 			code:    1,
 			id:      "Code(1)",
-			err:     errTest,
-			setters: []errorParamsSetter{SetDescription("hi")},
-			desc:    "hi",
-			meta:    nil,
-		},
-		{
-			code:    2,
-			id:      "Code(2)",
-			err:     errTest,
-			setters: []errorParamsSetter{SetDescription("hi"), SetDescription("ho")},
-			desc:    "ho",
-			meta:    nil,
-		},
-		{
-			code:    3,
-			id:      "Code(3)",
-			err:     errTest,
 			setters: nil,
-			desc:    "",
 			meta:    nil,
 		},
 		{
 			code:    4,
 			id:      "Code(4)",
-			err:     errTest,
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetDescription("let's go")},
-			desc:    "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"})},
 			meta:    Meta{"hi": "ho"},
 		},
 		{
 			code:    5,
 			id:      "Code(5)",
-			err:     errTest,
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetDescription("let's go"), SetMeta(Meta{"ho": "hi"})},
-			desc:    "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetMeta(Meta{"ho": "hi"})},
 			meta:    Meta{"ho": "hi", "hi": "ho"},
 		},
 	}
 
 	for _, tt := range tests {
-		got := NewFromError(tt.code, tt.err, tt.setters...)
+		got := NewFromError(tt.code, errTest, tt.setters...)
 		if got.StatusCode != tt.code {
 			t.Errorf("New(%d, %v) = %v, unexpected status\n exp: %d\n got: %d\n", tt.code, tt.setters, got, tt.code, got.StatusCode)
 		}
 		if got.ErrorID() != tt.id {
 			t.Errorf("New(%d, %v) = %v, unexpected error_id\n exp: %q\n got:  %q\n", tt.code, tt.setters, got, tt.id, got.ErrorID())
 		}
-		if got.Description != tt.err.Error() {
-			t.Errorf("New(%d, %v) = %v, unexpected description\n exp: %q\n got: %q\n", tt.code, tt.setters, got, tt.desc, got.Description)
+		if got.Description != errMsg {
+			t.Errorf("New(%d, %v) = %v, unexpected description\n exp: %q\n got: %q\n", tt.code, tt.setters, got, errMsg, got.Description)
 		}
 		if !reflect.DeepEqual(tt.meta, got.Meta) {
 			t.Errorf("New(%d, %v) = %v, unexpected meta\n exp: %v\n got: %v\n", tt.code, tt.setters, got, tt.meta, got.Meta)
@@ -166,27 +123,27 @@ func TestFromGRPC(t *testing.T) {
 		{
 			code: int(StatusBadRequest),
 			desc: `{"meta":{"hi":"ho"},"msg":"let's go"}`,
-			exp:  New(StatusBadRequest, SetMeta(Meta{"hi": "ho"}), SetDescription("let's go")),
+			exp:  New(StatusBadRequest, "let's go", SetMeta(Meta{"hi": "ho"})),
 		},
 		{
 			code: int(StatusBadRequest),
 			desc: `{"meta":{"hi":"ho"},"msg":"let's go"}`,
-			exp:  BadRequest(SetMeta(Meta{"hi": "ho"}), SetDescription("let's go")),
+			exp:  BadRequest("let's go", SetMeta(Meta{"hi": "ho"})),
 		},
 		{
 			code: int(StatusUnauthorized),
 			desc: `{"msg":"let's go"}`,
-			exp:  New(StatusUnauthorized, SetDescription("let's go")),
+			exp:  New(StatusUnauthorized, "let's go"),
 		},
 		{
 			code: int(StatusUnauthorized),
 			desc: `{"msg":"let's go"}`,
-			exp:  Unauthorized(SetDescription("let's go")),
+			exp:  Unauthorized("let's go"),
 		},
 		{
 			code: int(StatusUnauthorized),
 			desc: "let's go",
-			exp:  Unauthorized(SetDescription("let's go")),
+			exp:  Unauthorized("let's go"),
 		},
 	}
 
@@ -205,10 +162,10 @@ func TestToGRPCFromGRPC(t *testing.T) {
 	tests := []struct {
 		err *Error
 	}{
-		{New(StatusBadRequest, SetMeta(Meta{"hi": "ho"}), SetDescription("let's go"))},
-		{BadRequest(SetMeta(Meta{"hi": "ho"}), SetDescription("let's go"))},
-		{New(StatusUnauthorized, SetDescription("let's go"))},
-		{Unauthorized(SetDescription("let's go"))},
+		{New(StatusBadRequest, "let's go", SetMeta(Meta{"hi": "ho"}))},
+		{BadRequest("let's go", SetMeta(Meta{"hi": "ho"}))},
+		{New(StatusUnauthorized, "let's go")},
+		{Unauthorized("let's go")},
 	}
 
 	for _, tt := range tests {
@@ -226,18 +183,18 @@ func TestToGRPC(t *testing.T) {
 		err *Error
 		exp string
 	}{
-		{Unauthorized(SetMeta(Meta{"hi": "ho"})), `{"meta":{"hi":"ho"}}`},
-		{InternalServer(), `{}`},
-		{BadRequest(), `{}`},
-		{Forbidden(), `{}`},
-		{InvalidParams(), `{}`},
-		{NotAcceptable(), `{}`},
-		{NotFound(), `{}`},
-		{Delinquent(), `{}`},
-		{RateLimit(), `{}`},
-		{Unauthorized(), `{}`},
-		{Unauthorized(SetMeta(Meta{"hi": "ho"}), SetDescription("some error")), `{"meta":{"hi":"ho"},"msg":"some error"}`},
-		{RateLimit(SetMeta(Meta{"hi": "ho"}), SetMeta(Meta{"hi": "hi"}), SetDescription("some error")), `{"meta":{"hi":"hi"},"msg":"some error"}`},
+		{Unauthorized("", SetMeta(Meta{"hi": "ho"})), `{"meta":{"hi":"ho"}}`},
+		{InternalServer(""), `{}`},
+		{BadRequest(""), `{}`},
+		{Forbidden(""), `{}`},
+		{InvalidParams(""), `{}`},
+		{NotAcceptable(""), `{}`},
+		{NotFound(""), `{}`},
+		{Delinquent(""), `{}`},
+		{RateLimit(""), `{}`},
+		{Unauthorized(""), `{}`},
+		{Unauthorized("some error", SetMeta(Meta{"hi": "ho"})), `{"meta":{"hi":"ho"},"msg":"some error"}`},
+		{RateLimit("some error", SetMeta(Meta{"hi": "ho"}), SetMeta(Meta{"hi": "hi"})), `{"meta":{"hi":"hi"},"msg":"some error"}`},
 	}
 
 	for _, tt := range tests {
@@ -252,48 +209,56 @@ func TestToGRPC(t *testing.T) {
 func TestError(t *testing.T) {
 	tests := []struct {
 		code    Code
+		msg     string
 		setters []errorParamsSetter
 		exp     string
 	}{
 		{
 			code:    0,
+			msg:     "",
 			setters: nil,
 			exp:     `status_code=0 error_id="Code(0)"`,
 		},
 		{
 			code:    1,
-			setters: []errorParamsSetter{SetDescription("hi")},
+			msg:     "hi",
+			setters: nil,
 			exp:     `status_code=1 error_id="Code(1)" msg="hi"`,
 		},
 		{
 			code:    2,
-			setters: []errorParamsSetter{SetDescription("hi"), SetDescription("ho")},
+			msg:     "ho",
+			setters: nil,
 			exp:     `status_code=2 error_id="Code(2)" msg="ho"`,
 		},
 		{
 			code:    3,
+			msg:     "",
 			setters: nil,
 			exp:     `status_code=3 error_id="Code(3)"`,
 		},
 		{
 			code:    4,
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetDescription("let's go")},
+			msg:     "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"})},
 			exp:     `status_code=4 error_id="Code(4)" msg="let's go" hi=ho`,
 		},
 		{
 			code:    5,
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetDescription("let's go"), SetMeta(Meta{"hi": "hi"})},
+			msg:     "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetMeta(Meta{"hi": "hi"})},
 			exp:     `status_code=5 error_id="Code(5)" msg="let's go" hi=hi`,
 		},
 		{
 			code:    6,
-			setters: []errorParamsSetter{SetMeta(Meta{"ho": "hi"}), SetDescription("let's go")},
+			msg:     "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"ho": "hi"})},
 			exp:     `status_code=6 error_id="Code(6)" msg="let's go" ho=hi`,
 		},
 	}
 
 	for _, tt := range tests {
-		err := New(tt.code, tt.setters...)
+		err := New(tt.code, tt.msg, tt.setters...)
 		got := err.Error()
 		if got != tt.exp {
 			t.Errorf("(%v).Error() = %q\n exp: %q\n got: %q\n\n", err, got, tt.exp, got)
@@ -304,6 +269,7 @@ func TestError(t *testing.T) {
 func TestMarshalJSON(t *testing.T) {
 	tests := []struct {
 		code    Code
+		msg     string
 		setters []errorParamsSetter
 		exp     []byte
 	}{
@@ -314,37 +280,32 @@ func TestMarshalJSON(t *testing.T) {
 		},
 		{
 			code:    1,
-			setters: []errorParamsSetter{SetDescription("hi")},
+			msg:     "hi",
+			setters: nil,
 			exp:     []byte(`{"msg":"hi","error_id":"Code(1)","status_code":1}`),
 		},
 		{
-			code:    2,
-			setters: []errorParamsSetter{SetDescription("hi"), SetDescription("ho")},
-			exp:     []byte(`{"msg":"ho","error_id":"Code(2)","status_code":2}`),
-		},
-		{
-			code:    3,
-			setters: nil,
-			exp:     []byte(`{"error_id":"Code(3)","status_code":3}`),
-		},
-		{
 			code:    4,
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetDescription("let's go")},
+			msg:     "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"})},
 			exp:     []byte(`{"meta":{"hi":"ho"},"msg":"let's go","error_id":"Code(4)","status_code":4}`),
 		},
 		{
 			code:    5,
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetDescription("let's go"), SetMeta(Meta{"ho": "hi"})},
+			msg:     "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetMeta(Meta{"ho": "hi"})},
 			exp:     []byte(`{"meta":{"hi":"ho","ho":"hi"},"msg":"let's go","error_id":"Code(5)","status_code":5}`),
 		},
 		{
 			code:    6,
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho", "ho": "hi"}), SetDescription("let's go")},
+			msg:     "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho", "ho": "hi"})},
 			exp:     []byte(`{"meta":{"hi":"ho","ho":"hi"},"msg":"let's go","error_id":"Code(6)","status_code":6}`),
 		},
 		{
 			code:    StatusInternalServerError,
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho", "ho": "hi"}), SetDescription("let's go")},
+			msg:     "let's go",
+			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho", "ho": "hi"})},
 			exp:     []byte(`{"meta":{"hi":"ho","ho":"hi"},"msg":"let's go","error_id":"internal_server","status_code":500}`),
 		},
 		{
@@ -390,7 +351,7 @@ func TestMarshalJSON(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		err := New(tt.code, tt.setters...)
+		err := New(tt.code, tt.msg, tt.setters...)
 		got, _ := json.Marshal(err)
 		if !reflect.DeepEqual(got, tt.exp) {
 			t.Errorf("json.Marshal(%v) = %q\n exp: %q\n got: %q\n", err, got, tt.exp, got)

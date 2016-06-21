@@ -24,7 +24,7 @@ func (s *server) Req() (*Res, error) {
   res, err := fn()
 
   if err != nil {
-    err = errors.NewFromError(StatusInternalServer, err)
+    err = errors.New(StatusInternalServer, "unexpected error")
     return nil,  err.ToGRPC()
   }
 
@@ -60,18 +60,18 @@ func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
     case errors.StatusBadRequest:
       // manage bad requests
       w.WriteHeader(err.StatusCode)
-      json.Decoder(w).Decode(err) // there is no much more to do in case of failure
+      json.NewEncoder(w).Encoder(err) // there is no much more to do in case of failure
       return
     case err.StatusInternalServer:
       // manage internal server
       w.WriteHeader(err.StatusCode)
-      json.Decoder(w).Decode(err) // there is no much more to do in case of failure
+      json.NewEncoder(w).Encoder(err) // there is no much more to do in case of failure
       return
     default:
       // other unexpected error should be considered an internal server error
       err = errors.NewFromError(errors.StatusInternalServer, err)
       w.WriteHeader(err.StatusCode)
-      json.Decoder(w).Decode(err) // at this point we need to ignore a possible error
+      json.NewEncoder(w).Encode(err) // at this point we need to ignore a possible error
       return
     }
   }
@@ -79,7 +79,7 @@ func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
   if err := json.Decoder(w).Decode(err); err != nil {
       err = errors.NewFromError(errors.StatusInternalServer, err)
       w.WriteHeader(err.StatusCode)
-      json.Decoder(w).Decode(err) // at this point we need to ignore a possible error
+      json.NewEncoder(w).Encode(err) // at this point we need to ignore a possible error
   }
 }
 

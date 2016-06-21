@@ -37,19 +37,6 @@ const (
 	StatusInternalServerError = internal_server
 )
 
-var (
-	ErrBadRequest     = BadRequest()
-	ErrUnauthorized   = Unauthorized()
-	ErrDelinquent     = Delinquent()
-	ErrForbidden      = Forbidden()
-	ErrSuspended      = Suspended()
-	ErrNotFound       = NotFound()
-	ErrNotAcceptable  = NotAcceptable()
-	ErrInvalidParams  = InvalidParams()
-	ErrRateLimit      = RateLimit()
-	ErrInternalServer = InternalServer()
-)
-
 type Error struct {
 	StatusCode  Code
 	Meta        Meta
@@ -58,25 +45,20 @@ type Error struct {
 
 type Meta map[string]interface{}
 
-type errorParams struct {
-	meta        Meta
-	description string
-}
-
-func New(code Code, setters ...errorParamsSetter) *Error {
-	var p errorParams
+func New(code Code, message string, setters ...errorParamsSetter) *Error {
+	var m Meta
 	for _, s := range setters {
-		s(&p)
+		s(&m)
 	}
-	return &Error{StatusCode: code, Meta: p.meta, Description: p.description}
+	return &Error{StatusCode: code, Meta: m, Description: message}
 }
 
 func NewFromError(code Code, err error, setters ...errorParamsSetter) *Error {
-	var p errorParams
+	var m Meta
 	for _, s := range setters {
-		s(&p)
+		s(&m)
 	}
-	return &Error{StatusCode: code, Meta: p.meta, Description: err.Error()}
+	return &Error{StatusCode: code, Meta: m, Description: err.Error()}
 }
 
 func FromGRPC(err error) *Error {
@@ -127,65 +109,99 @@ func (e *Error) ToGRPC() error {
 	return grpc.Errorf(codes.Code(e.StatusCode), string(buff))
 }
 
-type errorParamsSetter func(*errorParams)
+type errorParamsSetter func(*Meta)
 
 func SetMeta(m Meta) errorParamsSetter {
-	return func(e *errorParams) {
-		if e.meta == nil {
-			e.meta = m
+	return func(params *Meta) {
+		if (*params) == nil {
+			(*params) = m
 			return
 		}
 
 		for key, value := range m {
-			e.meta[key] = value
+			(*params)[key] = value
 		}
 	}
 }
 
-func SetDescription(d string) errorParamsSetter {
-	return func(e *errorParams) {
-		e.description = d
-	}
+func BadRequest(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusBadRequest, message, setters...)
 }
 
-func BadRequest(setters ...errorParamsSetter) *Error {
-	return New(StatusBadRequest, setters...)
+func BadRequestFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusBadRequest, err, setters...)
 }
 
-func Unauthorized(setters ...errorParamsSetter) *Error {
-	return New(StatusUnauthorized, setters...)
+func Unauthorized(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusUnauthorized, message, setters...)
 }
 
-func Delinquent(setters ...errorParamsSetter) *Error {
-	return New(StatusPaymentRequired, setters...)
+func UnauthorizedFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusUnauthorized, err, setters...)
 }
 
-func Forbidden(setters ...errorParamsSetter) *Error {
-	return New(StatusForbidden, setters...)
+func Delinquent(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusPaymentRequired, message, setters...)
 }
 
-func Suspended(setters ...errorParamsSetter) *Error {
-	return New(StatusForbidden, setters...)
+func DelinquentFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusPaymentRequired, err, setters...)
 }
 
-func NotFound(setters ...errorParamsSetter) *Error {
-	return New(StatusNotFound, setters...)
+func Forbidden(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusForbidden, message, setters...)
 }
 
-func NotAcceptable(setters ...errorParamsSetter) *Error {
-	return New(StatusNotAcceptable, setters...)
+func ForbiddenFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusForbidden, err, setters...)
 }
 
-func InvalidParams(setters ...errorParamsSetter) *Error {
-	return New(StatusUnprocessableEntity, setters...)
+func Suspended(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusForbidden, message, setters...)
 }
 
-func RateLimit(setters ...errorParamsSetter) *Error {
-	return New(StatusTooManyRequests, setters...)
+func SuspendedFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusForbidden, err, setters...)
 }
 
-func InternalServer(setters ...errorParamsSetter) *Error {
-	return New(StatusInternalServerError, setters...)
+func NotFound(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusNotFound, message, setters...)
+}
+
+func NotFoundFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusNotFound, err, setters...)
+}
+
+func NotAcceptable(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusNotAcceptable, message, setters...)
+}
+
+func NotAcceptableFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusNotAcceptable, err, setters...)
+}
+
+func InvalidParams(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusUnprocessableEntity, message, setters...)
+}
+
+func InvalidParamsFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusUnprocessableEntity, err, setters...)
+}
+
+func RateLimit(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusTooManyRequests, message, setters...)
+}
+
+func RateLimitFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusTooManyRequests, err, setters...)
+}
+
+func InternalServer(message string, setters ...errorParamsSetter) *Error {
+	return New(StatusInternalServerError, message, setters...)
+}
+
+func InternalServerFromError(err error, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusInternalServerError, err, setters...)
 }
 
 func (e *Error) MarshalJSON() (b []byte, err error) {
