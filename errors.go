@@ -41,6 +41,8 @@ type Error struct {
 	StatusCode  Code
 	Meta        Meta
 	Description string
+
+	internal string // internal information used for debugging
 }
 
 type Meta map[string]interface{}
@@ -74,13 +76,17 @@ func FromGRPC(err error) *Error {
 			StatusCode:  Code(code),
 			Description: desc,
 		}
-	} else {
-		return &Error{
-			StatusCode:  Code(code),
-			Meta:        raw.Meta,
-			Description: raw.Description,
-		}
 	}
+
+	return &Error{
+		StatusCode:  Code(code),
+		Meta:        raw.Meta,
+		Description: raw.Description,
+	}
+}
+
+func (e *Error) Code() int {
+	return int(e.StatusCode)
 }
 
 func (e *Error) Error() string {
