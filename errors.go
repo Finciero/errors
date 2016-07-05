@@ -9,8 +9,10 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
+// Code type
 type Code int32
 
+// Codes identifiers
 const (
 	bad_request    Code = 400
 	unauthorized   Code = 401
@@ -24,6 +26,7 @@ const (
 	internal_server Code = 500
 )
 
+// Exportable aliases from real codes
 const (
 	StatusBadRequest          = bad_request
 	StatusUnauthorized        = unauthorized
@@ -37,86 +40,121 @@ const (
 	StatusInternalServerError = internal_server
 )
 
+// Error type
 type Error struct {
-	StatusCode  Code
-	Meta        Meta
-	Description string
+	StatusCode Code
+	Meta       Meta
+	Message    string
 
-	internal string // internal information used for debugging
+	InternalError error // internal information used for debugging
 }
 
+// Meta stores metadata that can be visible for end users and developers
 type Meta map[string]interface{}
 
-func New(code Code, message string, setters ...errorParamsSetter) *Error {
-	var m Meta
-	for _, s := range setters {
-		s(&m)
+// New returns a new Error
+func New(code Code, msg string, setters ...errorParamsSetter) *Error {
+	var meta Meta
+	for _, fn := range setters {
+		fn(&meta)
 	}
-	return &Error{StatusCode: code, Meta: m, Description: message}
+	return &Error{
+		StatusCode: code,
+		Meta:       meta,
+		Message:    msg,
+	}
 }
 
-func NewFromError(code Code, err error, setters ...errorParamsSetter) *Error {
-	var m Meta
-	for _, s := range setters {
-		s(&m)
+// NewFromError returns a New Error with description of the error given
+func NewFromError(code Code, err error, msg string, setters ...errorParamsSetter) *Error {
+	var meta Meta
+	for _, fn := range setters {
+		fn(&meta)
 	}
-	return &Error{StatusCode: code, Meta: m, Description: err.Error()}
+	return &Error{
+		StatusCode: code,
+		Meta:       meta,
+		Message:    msg,
+
+		InternalError: err,
+	}
 }
 
+// FromGRPC returns a new Error from an error received by grpc. If the
+// error was encoded with ToGPC method then the full Error passed is
+// returned.
 func FromGRPC(err error) *Error {
-	var raw = struct {
-		Meta        Meta   `json:"meta,omitempty"`
-		Description string `json:"msg,omitempty"`
-	}{}
+	var raw struct {
+		Meta          Meta   `json:"meta, omitempty"`
+		Message       string `json:"msg, omitempty"`
+		InternalError error  `json:"internal_error,omitempty"`
+	}
 
 	code := grpc.Code(err)
 	desc := grpc.ErrorDesc(err)
-	if err = json.Unmarshal([]byte(desc), &raw); err != nil {
-		return &Error{
-			StatusCode:  Code(code),
-			Description: desc,
-		}
+
+	if unmarshalError := json.Unmarshal([]byte(desc), &raw); unmarshalError != nil {
+		return InternalServerFromError(err, "unexpected error")
 	}
 
 	return &Error{
-		StatusCode:  Code(code),
-		Meta:        raw.Meta,
-		Description: raw.Description,
+		StatusCode: Code(code),
+		Meta:       raw.Meta,
+		Message:    raw.Message,
+
+		InternalError: raw.InternalError,
 	}
 }
 
+// ToGRPC ecode error into a grpc error
+func (e *Error) ToGRPC() error {
+	buff, _ := json.Marshal(struct {
+		Meta    Meta   `json:"meta,omitempty"`
+		Message string `json:"msg,omitempty"`
+
+		InternalError error `json:"internal_error,omitempty"`
+	}{
+		Meta:    e.Meta,
+		Message: e.Message,
+
+		InternalError: e.InternalError,
+	})
+
+	return grpc.Errorf(codes.Code(e.StatusCode), string(buff))
+}
+
+// Code returns error StatusCode casted to int
 func (e *Error) Code() int {
 	return int(e.StatusCode)
 }
 
+// Error method return string representation of error.
 func (e *Error) Error() string {
 	str := fmt.Sprintf("status_code=%d error_id=%q", e.StatusCode, fmt.Sprint(e.StatusCode))
 
-	if len(e.Description) > 0 {
-		str += fmt.Sprintf(" msg=%q", e.Description)
+	if len(e.Message) > 0 {
+		str += fmt.Sprintf(" msg=%q", e.Message)
+	}
+
+	if e.InternalError != nil {
+		str += fmt.Sprintf(" desc=%q", e.InternalError.Error())
 	}
 
 	for key, value := range e.Meta {
-		str += fmt.Sprintf(" %s=%s", key, value)
+		str += fmt.Sprintf(" %s=%q", key, value)
 	}
 
 	return str
 }
 
+// ErrorID returns string representation of the error StatusCode.
 func (e *Error) ErrorID() string {
 	return fmt.Sprint(e.StatusCode)
 }
 
-func (e *Error) ToGRPC() error {
-	buff, _ := json.Marshal(struct {
-		Meta        Meta   `json:"meta,omitempty"`
-		Description string `json:"msg,omitempty"`
-	}{e.Meta, e.Description})
-	return grpc.Errorf(codes.Code(e.StatusCode), string(buff))
-}
-
 type errorParamsSetter func(*Meta)
 
+// SetMeta sets the given key values into the Meta of the error.
 func SetMeta(m Meta) errorParamsSetter {
 	return func(params *Meta) {
 		if (*params) == nil {
@@ -130,91 +168,111 @@ func SetMeta(m Meta) errorParamsSetter {
 	}
 }
 
+// BadRequest returns an Error with bad_request code
 func BadRequest(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusBadRequest, message, setters...)
 }
 
-func BadRequestFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusBadRequest, err, setters...)
+// BadRequestFromError returns an Error with bad_request code with err as a
+// internalError.
+func BadRequestFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusBadRequest, err, msg, setters...)
 }
 
+// Unauthorized returns an Error with unauthorized code
 func Unauthorized(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusUnauthorized, message, setters...)
 }
 
-func UnauthorizedFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusUnauthorized, err, setters...)
+// UnauthorizedFromError returns an Error with unauthorized code with err as a
+// internalError.
+func UnauthorizedFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusUnauthorized, err, msg, setters...)
 }
 
+// Delinquent returns an Error with delinquent code
 func Delinquent(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusPaymentRequired, message, setters...)
 }
 
-func DelinquentFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusPaymentRequired, err, setters...)
+// DelinquentFromError returns an Error with delinquent code with err as a
+// internalError.
+func DelinquentFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusPaymentRequired, err, msg, setters...)
 }
 
+// Forbidden returns an Error with forbidden code
 func Forbidden(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusForbidden, message, setters...)
 }
 
-func ForbiddenFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusForbidden, err, setters...)
+// ForbiddenFromError returns an Error with forbidden code with err as a
+// internalError.
+func ForbiddenFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusForbidden, err, msg, setters...)
 }
 
-func Suspended(message string, setters ...errorParamsSetter) *Error {
-	return New(StatusForbidden, message, setters...)
-}
-
-func SuspendedFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusForbidden, err, setters...)
-}
-
+// NotFound returns an Error with not_found code
 func NotFound(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusNotFound, message, setters...)
 }
 
-func NotFoundFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusNotFound, err, setters...)
+// NotFoundFromError returns an Error with not_found code with err as a
+// internalError.
+func NotFoundFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusNotFound, err, msg, setters...)
 }
 
+// NotAcceptable returns an Error with not_acceptable code
 func NotAcceptable(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusNotAcceptable, message, setters...)
 }
 
-func NotAcceptableFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusNotAcceptable, err, setters...)
+// NotAcceptableFromError returns an Error with not_acceptable code with err as a
+// internalError.
+func NotAcceptableFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusNotAcceptable, err, msg, setters...)
 }
 
+// InvalidParams returns an Error with invalid_params code
 func InvalidParams(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusUnprocessableEntity, message, setters...)
 }
 
-func InvalidParamsFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusUnprocessableEntity, err, setters...)
+// InvalidParamsFromError returns an Error with invalid_params code with err as a
+// internalError.
+func InvalidParamsFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusUnprocessableEntity, err, msg, setters...)
 }
 
+// RateLimit returns an Error with rate_limit code
 func RateLimit(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusTooManyRequests, message, setters...)
 }
 
-func RateLimitFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusTooManyRequests, err, setters...)
+// RateLimitFromError returns an Error with rate_limit code with err as a
+// internalError.
+func RateLimitFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusTooManyRequests, err, msg, setters...)
 }
 
+// InternalServer returns an Error with internal_server code
 func InternalServer(message string, setters ...errorParamsSetter) *Error {
 	return New(StatusInternalServerError, message, setters...)
 }
 
-func InternalServerFromError(err error, setters ...errorParamsSetter) *Error {
-	return NewFromError(StatusInternalServerError, err, setters...)
+// InternalServerFromError returns an Error with internal_server code with err as a
+// internalError.
+func InternalServerFromError(err error, msg string, setters ...errorParamsSetter) *Error {
+	return NewFromError(StatusInternalServerError, err, msg, setters...)
 }
 
+// MarshalJSON serialize error to json
 func (e *Error) MarshalJSON() (b []byte, err error) {
 	return json.Marshal(struct {
 		Meta       Meta   `json:"meta,omitempty"`
-		Msg        string `json:"msg,omitempty"`
+		Message    string `json:"msg,omitempty"`
 		ErrorID    string `json:"error_id"`
 		StatusCode Code   `json:"status_code"`
-	}{e.Meta, e.Description, fmt.Sprint(e.StatusCode), e.StatusCode})
+	}{e.Meta, e.Message, fmt.Sprint(e.StatusCode), e.StatusCode})
 }
