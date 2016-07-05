@@ -3,6 +3,7 @@ package errors
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -15,49 +16,31 @@ func TestNew(t *testing.T) {
 		code    Code
 		id      string
 		setters []errorParamsSetter
-		desc    string
+		msg     string
 		meta    Meta
 	}{
-		{
-			code:    0,
-			id:      "Code(0)",
-			setters: nil,
-			desc:    "",
-			meta:    nil,
-		},
-		{
-			code:    1,
-			id:      "Code(1)",
-			setters: nil,
-			desc:    "hi",
-			meta:    nil,
-		},
-		{
-			code:    4,
-			id:      "Code(4)",
-			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"})},
-			desc:    "let's go",
-			meta:    Meta{"hi": "ho"},
-		},
+		{0, "Code(0)", nil, "", nil},
+		{1, "Code(1)", nil, "hi", nil},
+		{4, "Code(4)", []errorParamsSetter{SetMeta(Meta{"hi": "ho"})}, "let's go", Meta{"hi": "ho"}},
 		{
 			code:    5,
 			id:      "Code(5)",
 			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetMeta(Meta{"ho": "hi"})},
-			desc:    "let's go",
+			msg:     "let's go",
 			meta:    Meta{"ho": "hi", "hi": "ho"},
 		},
 	}
 
 	for _, tt := range tests {
-		got := New(tt.code, tt.desc, tt.setters...)
+		got := New(tt.code, tt.msg, tt.setters...)
 		if got.StatusCode != tt.code {
 			t.Errorf("New(%d, %v) = %v, unexpected status\n exp: %d\n got: %d\n", tt.code, tt.setters, got, tt.code, got.StatusCode)
 		}
 		if got.ErrorID() != tt.id {
 			t.Errorf("New(%d, %v) = %v, unexpected error_id\n exp: %q\n got:  %q\n", tt.code, tt.setters, got, tt.id, got.ErrorID())
 		}
-		if got.Description != tt.desc {
-			t.Errorf("New(%d, %v) = %v, unexpected description\n exp: %q\n got: %q\n", tt.code, tt.setters, got, tt.desc, got.Description)
+		if got.Message != tt.msg {
+			t.Errorf("New(%d, %v) = %v, unexpected description\n exp: %q\n got: %q\n", tt.code, tt.setters, got, tt.msg, got.Message)
 		}
 		if !reflect.DeepEqual(tt.meta, got.Meta) {
 			t.Errorf("New(%d, %v) = %v, unexpected meta\n exp: %v\n got: %v\n", tt.code, tt.setters, got, tt.meta, got.Meta)
@@ -98,15 +81,15 @@ func TestNewFromError(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := NewFromError(tt.code, errTest, tt.setters...)
+		got := NewFromError(tt.code, errTest, "", tt.setters...)
 		if got.StatusCode != tt.code {
 			t.Errorf("New(%d, %v) = %v, unexpected status\n exp: %d\n got: %d\n", tt.code, tt.setters, got, tt.code, got.StatusCode)
 		}
 		if got.ErrorID() != tt.id {
 			t.Errorf("New(%d, %v) = %v, unexpected error_id\n exp: %q\n got:  %q\n", tt.code, tt.setters, got, tt.id, got.ErrorID())
 		}
-		if got.Description != errMsg {
-			t.Errorf("New(%d, %v) = %v, unexpected description\n exp: %q\n got: %q\n", tt.code, tt.setters, got, errMsg, got.Description)
+		if got.InternalError != errTest {
+			t.Errorf("New(%d, %v) = %v, unexpected description\n exp: %q\n got: %q\n", tt.code, tt.setters, got, errTest, got.InternalError)
 		}
 		if !reflect.DeepEqual(tt.meta, got.Meta) {
 			t.Errorf("New(%d, %v) = %v, unexpected meta\n exp: %v\n got: %v\n", tt.code, tt.setters, got, tt.meta, got.Meta)
@@ -115,44 +98,66 @@ func TestNewFromError(t *testing.T) {
 }
 
 func TestFromGRPC(t *testing.T) {
-	tests := []struct {
-		code int
-		desc string
-		exp  *Error
-	}{
-		{
-			code: int(StatusBadRequest),
-			desc: `{"meta":{"hi":"ho"},"msg":"let's go"}`,
-			exp:  New(StatusBadRequest, "let's go", SetMeta(Meta{"hi": "ho"})),
-		},
-		{
-			code: int(StatusBadRequest),
-			desc: `{"meta":{"hi":"ho"},"msg":"let's go"}`,
-			exp:  BadRequest("let's go", SetMeta(Meta{"hi": "ho"})),
-		},
-		{
-			code: int(StatusUnauthorized),
-			desc: `{"msg":"let's go"}`,
-			exp:  New(StatusUnauthorized, "let's go"),
-		},
-		{
-			code: int(StatusUnauthorized),
-			desc: `{"msg":"let's go"}`,
-			exp:  Unauthorized("let's go"),
-		},
-		{
-			code: int(StatusUnauthorized),
-			desc: "let's go",
-			exp:  Unauthorized("let's go"),
-		},
+	{
+		tests := []struct {
+			code int
+			msg  string
+			exp  *Error
+		}{
+			{
+				code: int(StatusBadRequest),
+				msg:  `{"meta":{"hi":"ho"},"msg":"let's go"}`,
+				exp:  New(StatusBadRequest, "let's go", SetMeta(Meta{"hi": "ho"})),
+			},
+			{
+				code: int(StatusBadRequest),
+				msg:  `{"meta":{"hi":"ho"},"msg":"let's go"}`,
+				exp:  BadRequest("let's go", SetMeta(Meta{"hi": "ho"})),
+			},
+			{
+				code: int(StatusUnauthorized),
+				msg:  `{"msg":"let's go"}`,
+				exp:  New(StatusUnauthorized, "let's go"),
+			},
+			{
+				code: int(StatusUnauthorized),
+				msg:  `{"msg":"let's go"}`,
+				exp:  Unauthorized("let's go"),
+			},
+		}
+
+		for _, tt := range tests {
+			in := grpc.Errorf(codes.Code(tt.code), tt.msg)
+			err := FromGRPC(in)
+
+			if !reflect.DeepEqual(err, tt.exp) {
+				t.Errorf("FromGRPC(%#v) = %#v\n\n exp: %v\n got: %v\n", in, err, tt.exp, err)
+			}
+		}
 	}
+	{
+		errTest := errors.New("testing: test error")
 
-	for _, tt := range tests {
-		in := grpc.Errorf(codes.Code(tt.code), tt.desc)
-		err := FromGRPC(in)
+		tests := []struct {
+			err error
+			exp *Error
+		}{
+			{
+				err: errTest,
+				exp: InternalServerFromError(errTest, "unexpected error"),
+			},
+			{
+				err: grpc.Errorf(codes.Code(int(StatusBadRequest)), `{"msg":"let's go"}`),
+				exp: BadRequest("let's go"),
+			},
+		}
 
-		if !reflect.DeepEqual(err, tt.exp) {
-			t.Errorf("FromGRPC(%v) = %v\n exp: %v\n got: %v\n", in, err, tt.exp, err)
+		for _, tt := range tests {
+			err := FromGRPC(tt.err)
+
+			if !reflect.DeepEqual(err, tt.exp) {
+				t.Errorf("FromGRPC(%#v) = %#v\n\n exp: %v\n got: %v\n", tt.err, err, tt.exp, err)
+			}
 		}
 	}
 }
@@ -241,19 +246,19 @@ func TestError(t *testing.T) {
 			code:    4,
 			msg:     "let's go",
 			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"})},
-			exp:     `status_code=4 error_id="Code(4)" msg="let's go" hi=ho`,
+			exp:     `status_code=4 error_id="Code(4)" msg="let's go" hi="ho"`,
 		},
 		{
 			code:    5,
 			msg:     "let's go",
 			setters: []errorParamsSetter{SetMeta(Meta{"hi": "ho"}), SetMeta(Meta{"hi": "hi"})},
-			exp:     `status_code=5 error_id="Code(5)" msg="let's go" hi=hi`,
+			exp:     `status_code=5 error_id="Code(5)" msg="let's go" hi="hi"`,
 		},
 		{
 			code:    6,
 			msg:     "let's go",
 			setters: []errorParamsSetter{SetMeta(Meta{"ho": "hi"})},
-			exp:     `status_code=6 error_id="Code(6)" msg="let's go" ho=hi`,
+			exp:     `status_code=6 error_id="Code(6)" msg="let's go" ho="hi"`,
 		},
 	}
 
@@ -261,6 +266,40 @@ func TestError(t *testing.T) {
 		err := New(tt.code, tt.msg, tt.setters...)
 		got := err.Error()
 		if got != tt.exp {
+			t.Errorf("(%v).Error() = %q\n exp: %q\n got: %q\n\n", err, got, tt.exp, got)
+		}
+	}
+}
+
+type testError struct {
+	Foo string
+	Bar int
+}
+
+func (err *testError) Error() string {
+	return fmt.Sprintf("foo=%s bar=%d", err.Foo, err.Bar)
+}
+
+func TestMarshalJSONFromError(t *testing.T) {
+	tests := []struct {
+		code Code
+		msg  string
+		err  error
+		exp  []byte
+	}{
+		{
+			code: StatusBadRequest,
+			msg:  "testing",
+			err:  &testError{Foo: "foo", Bar: 3},
+			exp:  []byte(`{"msg":"testing","error_id":"bad_request","status_code":400}`),
+		},
+	}
+
+	for _, tt := range tests {
+		err := NewFromError(tt.code, tt.err, tt.msg)
+		got, _ := json.Marshal(err)
+
+		if !reflect.DeepEqual(got, tt.exp) {
 			t.Errorf("(%v).Error() = %q\n exp: %q\n got: %q\n\n", err, got, tt.exp, got)
 		}
 	}
