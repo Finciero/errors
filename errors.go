@@ -40,6 +40,11 @@ const (
 	StatusInternalServerError = internal_server
 )
 
+// Exportable messages for errors
+const (
+	UnexpectedMsg = "unexpected error"
+)
+
 // Error type
 type Error struct {
 	StatusCode Code
